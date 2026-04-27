@@ -1,17 +1,12 @@
 {
   "mcpServers": {
     "costpilot": {
-      "command": "npx",
+      "type": "stdio",
+      "command": "node",
       "args": [
-        "-y",
-        "--package=github:Shubham-garg1234/CostPilot_MCP",
-        "costpilot-mcp"
+        "${workspaceFolder}/costpilot-mcp.mjs"
       ],
-      "env": {
-        "COSTPILOT_API_URL": "https://costpilot-lmzd.onrender.com",
-        "COSTPILOT_EMPLOYEE_EMAIL": "your-employee-email",
-        "COSTPILOT_EMPLOYEE_PASSWORD": "your-employee-password"
-      }
+      "envFile": "${workspaceFolder}/.env"
     }
   }
 }

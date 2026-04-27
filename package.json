@@ -3,7 +3,17 @@
   "version": "0.1.0",
   "private": false,
   "type": "module",
+  "description": "CostPilot MCP server for Cursor and other MCP clients",
   "bin": {
     "costpilot-mcp": "./costpilot-mcp.mjs"
+  },
+  "scripts": {
+    "start": "node ./costpilot-mcp.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.5"
   }
 }

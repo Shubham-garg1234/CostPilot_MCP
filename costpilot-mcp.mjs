@@ -1,172 +1,130 @@
 #!/usr/bin/env node
 
-const apiUrl = process.env.COSTPILOT_API_URL?.trim() || "http://127.0.0.1:4000";
-const employeeEmail = process.env.COSTPILOT_EMPLOYEE_EMAIL?.trim();
-const employeePassword = process.env.COSTPILOT_EMPLOYEE_PASSWORD?.trim();
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+
+const SERVER_INFO = {
+  name: "costpilot-mcp",
+  version: "0.1.0"
+};
+
+const apiUrl =
+  process.env.COSTPILOT_API_URL?.trim() ||
+  process.env.NEXT_PUBLIC_API_URL?.trim() ||
+  "http://127.0.0.1:4000";
+const employeeEmail = process.env.COSTPILOT_EMPLOYEE_EMAIL?.trim() || "";
+const employeePassword = process.env.COSTPILOT_EMPLOYEE_PASSWORD?.trim() || "";
 
 let employeeToken = "";
-let buffer = Buffer.alloc(0);
 
-process.stdin.on("data", (chunk) => {
-  buffer = Buffer.concat([buffer, chunk]);
-  processBuffer();
-});
-
-function processBuffer() {
-  while (true) {
-    const separatorIndex = buffer.indexOf("\r\n\r\n");
-    if (separatorIndex === -1) {
-      return;
+const tools = [
+  {
+    name: "track_usage_event",
+    description: "Record token, cost, category, and source metadata in CostPilot.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        model: { type: "string" },
+        provider: { type: "string", enum: ["openai", "anthropic", "gemini"] },
+        category: { type: "string" },
+        feature: { type: "string" },
+        source: { type: "string" },
+        integrationType: { type: "string" },
+        workspaceId: { type: "string" },
+        sessionId: { type: "string" },
+        requestId: { type: "string" },
+        status: { type: "string" },
+        promptTokens: { type: "number" },
+        completionTokens: { type: "number" },
+        totalTokens: { type: "number" },
+        costUsd: { type: "number" },
+        metadata: { type: "object" },
+        startedAt: { type: "string" },
+        completedAt: { type: "string" }
+      },
+      required: ["model", "provider", "category"]
     }
-
-    const headerText = buffer.subarray(0, separatorIndex).toString("utf8");
-    const contentLengthHeader = headerText
-      .split("\r\n")
-      .find((line) => line.toLowerCase().startsWith("content-length:"));
-
-    if (!contentLengthHeader) {
-      buffer = Buffer.alloc(0);
-      return;
+  },
+  {
+    name: "get_usage_summary",
+    description: "Fetch usage totals and grouped breakdowns from CostPilot.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        source: { type: "string" },
+        category: { type: "string" },
+        provider: { type: "string", enum: ["openai", "anthropic", "gemini"] },
+        days: { type: "number" }
+      }
     }
-
-    const contentLength = Number(contentLengthHeader.split(":")[1]?.trim() ?? 0);
-    const messageStart = separatorIndex + 4;
-    const totalLength = messageStart + contentLength;
-
-    if (buffer.length < totalLength) {
-      return;
+  },
+  {
+    name: "get_budget_status",
+    description: "Fetch the dashboard summary metrics and source/provider cost splits.",
+    inputSchema: {
+      type: "object",
+      properties: {}
     }
-
-    const payload = buffer.subarray(messageStart, totalLength).toString("utf8");
-    buffer = buffer.subarray(totalLength);
-
-    try {
-      void handleMessage(JSON.parse(payload));
-    } catch {
-      writeError(null, -32700, "Invalid JSON");
+  },
+  {
+    name: "list_policies",
+    description: "List active CostPilot policies for the current organization.",
+    inputSchema: {
+      type: "object",
+      properties: {}
     }
   }
-}
+];
 
-async function handleMessage(message) {
-  switch (message.method) {
-    case "initialize":
-      return writeResult(message.id ?? null, {
-        protocolVersion: "2024-11-05",
-        capabilities: {
-          tools: {}
-        },
-        serverInfo: {
-          name: "costpilot-mcp",
-          version: "0.1.0"
-        }
-      });
-    case "notifications/initialized":
-      return;
-    case "tools/list":
-      return writeResult(message.id ?? null, {
-        tools: [
-          {
-            name: "track_usage_event",
-            description: "Record token, cost, category, and source metadata in CostPilot.",
-            inputSchema: {
-              type: "object",
-              properties: {
-                model: { type: "string" },
-                provider: { type: "string", enum: ["openai", "anthropic", "gemini"] },
-                category: { type: "string" },
-                feature: { type: "string" },
-                source: { type: "string" },
-                integrationType: { type: "string" },
-                workspaceId: { type: "string" },
-                sessionId: { type: "string" },
-                requestId: { type: "string" },
-                promptTokens: { type: "number" },
-                completionTokens: { type: "number" },
-                totalTokens: { type: "number" },
-                costUsd: { type: "number" },
-                metadata: { type: "object" }
-              },
-              required: ["model", "provider", "category"]
-            }
-          },
-          {
-            name: "get_usage_summary",
-            description: "Fetch usage totals and grouped breakdowns from CostPilot.",
-            inputSchema: {
-              type: "object",
-              properties: {
-                source: { type: "string" },
-                category: { type: "string" },
-                provider: { type: "string", enum: ["openai", "anthropic", "gemini"] },
-                days: { type: "number" }
-              }
-            }
-          },
-          {
-            name: "get_budget_status",
-            description: "Fetch the dashboard summary metrics and source/provider cost splits.",
-            inputSchema: {
-              type: "object",
-              properties: {}
-            }
-          },
-          {
-            name: "list_policies",
-            description: "List active CostPilot policies for the current organization.",
-            inputSchema: {
-              type: "object",
-              properties: {}
-            }
-          }
-        ]
-      });
-    case "tools/call":
-      return handleToolCall(message);
-    default:
-      return writeError(message.id ?? null, -32601, `Method not found: ${message.method}`);
+const server = new Server(
+  SERVER_INFO,
+  {
+    capabilities: {
+      tools: {}
+    }
   }
-}
+);
 
-async function handleToolCall(message) {
-  const name = String(message.params?.name ?? "");
-  const args = message.params?.arguments ?? {};
+server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const name = String(request.params.name ?? "");
+  const args = request.params.arguments ?? {};
 
   try {
     switch (name) {
-      case "track_usage_event": {
-        const result = await apiFetch("/api/usage-events", {
-          method: "POST",
-          body: JSON.stringify(args)
-        });
-        return writeToolResult(message.id ?? null, result);
-      }
+      case "track_usage_event":
+        return createToolResult(
+          await apiFetch("/api/usage-events", {
+            method: "POST",
+            body: JSON.stringify(args)
+          })
+        );
       case "get_usage_summary": {
         const query = new URLSearchParams();
+
         for (const [key, value] of Object.entries(args)) {
           if (value !== undefined && value !== null && value !== "") {
             query.set(key, String(value));
           }
         }
+
         const suffix = query.size > 0 ? `?${query.toString()}` : "";
-        const result = await apiFetch(`/api/usage-events/summary${suffix}`);
-        return writeToolResult(message.id ?? null, result);
+        return createToolResult(await apiFetch(`/api/usage-events/summary${suffix}`));
       }
-      case "get_budget_status": {
-        const result = await apiFetch("/api/dashboard/summary");
-        return writeToolResult(message.id ?? null, result);
-      }
-      case "list_policies": {
-        const result = await apiFetch("/api/policies");
-        return writeToolResult(message.id ?? null, result);
-      }
+      case "get_budget_status":
+        return createToolResult(await apiFetch("/api/dashboard/summary"));
+      case "list_policies":
+        return createToolResult(await apiFetch("/api/policies"));
       default:
-        return writeError(message.id ?? null, -32602, `Unknown tool: ${name}`);
+        return createToolError(`Unknown tool: ${name}`);
     }
   } catch (error) {
-    return writeError(message.id ?? null, -32000, error instanceof Error ? error.message : "Tool call failed");
+    const message = error instanceof Error ? error.message : "Tool call failed";
+    return createToolError(message);
   }
-}
+});
 
 async function apiFetch(requestPath, init = {}) {
   if (!employeeToken) {
@@ -235,34 +193,38 @@ function safeJsonParse(text) {
   }
 }
 
-function writeToolResult(id, payload) {
-  writeResult(id, {
+function createToolResult(payload) {
+  return {
     content: [
       {
         type: "text",
         text: JSON.stringify(payload, null, 2)
       }
     ]
-  });
+  };
 }
 
-function writeResult(id, result) {
-  writeMessage({
-    jsonrpc: "2.0",
-    id,
-    result
-  });
+function createToolError(message) {
+  return {
+    content: [
+      {
+        type: "text",
+        text: message
+      }
+    ],
+    isError: true
+  };
 }
 
-function writeError(id, code, message) {
-  writeMessage({
-    jsonrpc: "2.0",
-    id,
-    error: { code, message }
-  });
+async function main() {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
 }
 
-function writeMessage(message) {
-  const payload = JSON.stringify(message);
-  process.stdout.write(`Content-Length: ${Buffer.byteLength(payload, "utf8")}\r\n\r\n${payload}`);
-}
+main().catch((error) => {
+  console.error(
+    "[costpilot-mcp] Fatal startup error:",
+    error instanceof Error ? error.stack ?? error.message : error
+  );
+  process.exit(1);
+});
