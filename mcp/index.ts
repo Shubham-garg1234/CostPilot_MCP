@@ -1,4 +1,4 @@
-const apiUrl = process.env.COSTPILOT_API_URL?.trim() || "http://127.0.0.1:4000";
+const apiUrl = normalizeApiBaseUrl(process.env.COSTPILOT_API_URL?.trim() || "http://127.0.0.1:4000");
 const employeeEmail = process.env.COSTPILOT_EMPLOYEE_EMAIL?.trim();
 const employeePassword = process.env.COSTPILOT_EMPLOYEE_PASSWORD?.trim();
 
@@ -180,7 +180,8 @@ async function apiFetch(requestPath: string, init: RequestInit = {}) {
     employeeToken = await loginEmployee();
   }
 
-  const response = await fetch(`${apiUrl}${requestPath}`, {
+  const requestUrl = buildApiUrl(requestPath);
+  const response = await fetch(requestUrl, {
     ...init,
     headers: {
       Authorization: `Bearer ${employeeToken}`,
@@ -215,7 +216,7 @@ async function loginEmployee() {
     throw new Error("Set COSTPILOT_EMPLOYEE_EMAIL and COSTPILOT_EMPLOYEE_PASSWORD before using CostPilot MCP.");
   }
 
-  const response = await fetch(`${apiUrl}/api/auth/employee-login`, {
+  const response = await fetch(buildApiUrl("/api/auth/employee-login"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -240,6 +241,33 @@ function safeJsonParse(text: string) {
   } catch {
     return text;
   }
+}
+
+function normalizeApiBaseUrl(url: string) {
+  const trimmed = (url || "").trim();
+  const fallback = "http://127.0.0.1:4000";
+  const candidate = trimmed || fallback;
+
+  let normalized: URL;
+  try {
+    normalized = new URL(candidate);
+  } catch {
+    normalized = new URL(fallback);
+  }
+
+  // Windows may resolve localhost to IPv6 where local API isn't bound.
+  if (normalized.hostname === "localhost") {
+    normalized.hostname = "127.0.0.1";
+  }
+
+  normalized.pathname = normalized.pathname.replace(/\/+$/, "");
+  return normalized.toString().replace(/\/+$/, "");
+}
+
+function buildApiUrl(requestPath: string) {
+  const path = String(requestPath || "");
+  const safePath = path.startsWith("/") ? path : `/${path}`;
+  return new URL(safePath, `${apiUrl}/`).toString();
 }
 
 function writeToolResult(id: JsonRpcId, payload: unknown) {
