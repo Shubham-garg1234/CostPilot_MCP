@@ -73,6 +73,22 @@ const tools = [
       type: "object",
       properties: {}
     }
+  },
+  {
+    name: "enhance_prompt",
+    description: "Tune a raw Cursor prompt into a clearer, implementation-ready prompt using CostPilot's OpenAI-backed enhancer.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        prompt: { type: "string" },
+        model: { type: "string", description: "Optional OpenAI model for prompt enhancement." },
+        targetModel: { type: "string", description: "Optional target model or agent that will use the refined prompt." },
+        objective: { type: "string", description: "Optional goal the prompt should optimize for." },
+        context: { type: "string", description: "Optional project or task context to preserve in the refined prompt." },
+        metadata: { type: "object" }
+      },
+      required: ["prompt"]
+    }
   }
 ];
 
@@ -116,6 +132,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return createToolResult(await apiFetch("/api/dashboard/summary"));
       case "list_policies":
         return createToolResult(await apiFetch("/api/policies"));
+      case "enhance_prompt":
+        return createToolResult(
+          await apiFetch("/api/prompt-enhancement", {
+            method: "POST",
+            body: JSON.stringify(args)
+          })
+        );
       default:
         return createToolError(`Unknown tool: ${name}`);
     }
