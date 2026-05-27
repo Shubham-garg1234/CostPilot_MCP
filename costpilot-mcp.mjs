@@ -10,7 +10,7 @@ const SERVER_INFO = {
 };
 
 const apiUrl = normalizeApiBaseUrl(
-  process.env.COSTPILOT_API_URL?.trim() || process.env.NEXT_PUBLIC_API_URL?.trim() || "http://127.0.0.1:4000"
+  process.env.COSTPILOT_API_URL?.trim() || process.env.NEXT_PUBLIC_API_URL?.trim() || "https://costpilot-lmzd.onrender.com"
 );
 const employeeEmail = process.env.COSTPILOT_EMPLOYEE_EMAIL?.trim() || "";
 const employeePassword = process.env.COSTPILOT_EMPLOYEE_PASSWORD?.trim() || "";
